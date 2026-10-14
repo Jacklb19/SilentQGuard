@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SilentRadar HTTP v1 contract definitions",
+  "description": "Validar cada payload contra su $defs correspondiente. Este documento no define una unión de todos los payloads.",
+  "$defs": {
+    "Uuid": { "type": "string", "format": "uuid", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+    "SpaceId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "Revision": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$", "maxLength": 20, "description": "Además validar <= 18446744073709551615 mediante BigInt." },
+    "UtcTimestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "SubmitReportRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["requestId", "spaceId", "level"],
+      "properties": {
+        "requestId": { "$ref": "#/$defs/Uuid" },
+        "spaceId": { "$ref": "#/$defs/SpaceId" },
+        "level": { "type": "integer", "minimum": 1, "maximum": 5 }
+      }
+    },
+    "Space": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "name", "location", "averageNoise", "status", "recentReportCount", "lastReportedAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/SpaceId" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "location": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "averageNoise": { "type": ["number", "null"], "minimum": 1, "maximum": 5 },
+        "status": { "enum": ["NO_DATA", "QUIET", "MODERATE", "LOUD"] },
+        "recentReportCount": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "lastReportedAt": { "oneOf": [{ "$ref": "#/$defs/UtcTimestamp" }, { "type": "null" }] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "NO_DATA" } } },
+          "then": { "properties": { "averageNoise": { "type": "null" }, "recentReportCount": { "const": 0 }, "lastReportedAt": { "type": "null" } } },
+          "else": { "properties": { "averageNoise": { "type": "number" }, "recentReportCount": { "minimum": 1 }, "lastReportedAt": { "$ref": "#/$defs/UtcTimestamp" } } }
+        },
+        { "if": { "properties": { "status": { "const": "QUIET" } } }, "then": { "properties": { "averageNoise": { "type": "number", "exclusiveMaximum": 2.5 } } } },
+        { "if": { "properties": { "status": { "const": "MODERATE" } } }, "then": { "properties": { "averageNoise": { "type": "number", "minimum": 2.5, "exclusiveMaximum": 3.5 } } } },
+        { "if": { "properties": { "status": { "const": "LOUD" } } }, "then": { "properties": { "averageNoise": { "type": "number", "minimum": 3.5 } } } }
+      ]
+    },
+    "SpaceSnapshot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["serviceInstanceId", "revision", "serverTime", "spaces"],
+      "properties": {
+        "serviceInstanceId": { "$ref": "#/$defs/Uuid" },
+        "revision": { "$ref": "#/$defs/Revision" },
+        "serverTime": { "$ref": "#/$defs/UtcTimestamp" },
+        "spaces": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/Space" }, "description": "Dominio valida cuatro IDs únicos del catálogo fijo." }
+      }
+    },
+    "GetSpaceResponse": {
+      "type": "object", "additionalProperties": false,
+      "required": ["serviceInstanceId", "revision", "serverTime", "space"],
+      "properties": {
+        "serviceInstanceId": { "$ref": "#/$defs/Uuid" },
+        "revision": { "$ref": "#/$defs/Revision" },
+        "serverTime": { "$ref": "#/$defs/UtcTimestamp" },
+        "space": { "$ref": "#/$defs/Space" }
+      }
+    },
+    "Report": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "requestId", "spaceId", "level", "receivedAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Uuid" },
+        "requestId": { "$ref": "#/$defs/Uuid" },
+        "spaceId": { "$ref": "#/$defs/SpaceId" },
+        "level": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "receivedAt": { "$ref": "#/$defs/UtcTimestamp" }
+      }
+    },
+    "SubmitReportResponse": {
+      "type": "object", "additionalProperties": false,
+      "required": ["report", "snapshot", "duplicate"],
+      "properties": {
+        "report": { "$ref": "#/$defs/Report" },
+        "snapshot": { "$ref": "#/$defs/SpaceSnapshot" },
+        "duplicate": { "type": "boolean" }
+      }
+    },
+    "SnapshotEvent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["reason", "snapshot"],
+      "properties": {
+        "reason": { "enum": ["INITIAL", "REPORT_ACCEPTED", "REPORTS_EXPIRED"] },
+        "snapshot": { "$ref": "#/$defs/SpaceSnapshot" }
+      }
+    },
+    "ConnectionEvent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status"],
+      "properties": { "status": { "enum": ["syncing", "live", "reconnecting"] } }
+    },
+    "ErrorResponse": {
+      "type": "object", "additionalProperties": false,
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object", "additionalProperties": false,
+          "required": ["code", "message", "requestId", "details"],
+          "properties": {
+            "code": { "enum": ["INVALID_ARGUMENT", "SPACE_NOT_FOUND", "IDEMPOTENCY_CONFLICT", "RATE_LIMITED", "SERVICE_UNAVAILABLE", "UPSTREAM_TIMEOUT", "UPSTREAM_AUTH_ERROR", "INTERNAL_ERROR", "UNSUPPORTED_MEDIA_TYPE", "PAYLOAD_TOO_LARGE"] },
+            "message": { "type": "string", "minLength": 1 },
+            "requestId": { "$ref": "#/$defs/Uuid" },
+            "details": {
+              "type": "array",
+              "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["field", "issue"],
+                "properties": { "field": { "type": "string" }, "issue": { "type": "string", "minLength": 1 } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package silentradar.acoustic.v1;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+service AcousticService {
+  rpc ListSpaces(google.protobuf.Empty) returns (SpaceSnapshot);
+  rpc GetSpace(GetSpaceRequest) returns (GetSpaceResponse);
+  rpc SubmitReport(SubmitReportRequest) returns (SubmitReportResponse);
+  rpc WatchSpaces(google.protobuf.Empty) returns (stream SnapshotEvent);
+}
+
+enum AcousticStatus {
+  ACOUSTIC_STATUS_UNSPECIFIED = 0;
+  ACOUSTIC_STATUS_NO_DATA = 1;
+  ACOUSTIC_STATUS_QUIET = 2;
+  ACOUSTIC_STATUS_MODERATE = 3;
+  ACOUSTIC_STATUS_LOUD = 4;
+}
+
+enum SnapshotReason {
+  SNAPSHOT_REASON_UNSPECIFIED = 0;
+  SNAPSHOT_REASON_INITIAL = 1;
+  SNAPSHOT_REASON_REPORT_ACCEPTED = 2;
+  SNAPSHOT_REASON_REPORTS_EXPIRED = 3;
+}
+
+message Space {
+  string id = 1;
+  string name = 2;
+  string location = 3;
+  optional double average_noise = 4;
+  AcousticStatus status = 5;
+  uint32 recent_report_count = 6;
+  // Ausente cuando no hay reportes vigentes. No es la hora del recálculo.
+  google.protobuf.Timestamp last_reported_at = 7;
+}
+
+message SpaceSnapshot {
+  // UUID nuevo por arranque. La revisión solo se compara dentro de este UUID.
+  string service_instance_id = 1;
+  uint64 revision = 2;
+  google.protobuf.Timestamp server_time = 3;
+  repeated Space spaces = 4;
+}
+
+message GetSpaceRequest {
+  string space_id = 1;
+}
+
+message GetSpaceResponse {
+  string service_instance_id = 1;
+  uint64 revision = 2;
+  google.protobuf.Timestamp server_time = 3;
+  Space space = 4;
+}
+
+message SubmitReportRequest {
+  string request_id = 1; // UUID generado una sola vez por envío lógico.
+  string space_id = 2;
+  int32 level = 3; // Entero 1..5; validación obligatoria en el servicio.
+}
+
+message Report {
+  string id = 1;
+  string request_id = 2;
+  string space_id = 3;
+  int32 level = 4;
+  google.protobuf.Timestamp received_at = 5;
+}
+
+message SubmitReportResponse {
+  Report report = 1;
+  SpaceSnapshot snapshot = 2; // Estado actual también al repetir una petición.
+  bool duplicate = 3;
+}
+
+message SnapshotEvent {
+  SnapshotReason reason = 1;
+  SpaceSnapshot snapshot = 2;
+}
