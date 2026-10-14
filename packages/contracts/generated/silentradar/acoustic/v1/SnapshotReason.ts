@@ -1,0 +1,20 @@
+// Original file: packages/contracts/acoustic.proto
+
+export const SnapshotReason = {
+  SNAPSHOT_REASON_UNSPECIFIED: 'SNAPSHOT_REASON_UNSPECIFIED',
+  SNAPSHOT_REASON_INITIAL: 'SNAPSHOT_REASON_INITIAL',
+  SNAPSHOT_REASON_REPORT_ACCEPTED: 'SNAPSHOT_REASON_REPORT_ACCEPTED',
+  SNAPSHOT_REASON_REPORTS_EXPIRED: 'SNAPSHOT_REASON_REPORTS_EXPIRED',
+} as const;
+
+export type SnapshotReason =
+  | 'SNAPSHOT_REASON_UNSPECIFIED'
+  | 0
+  | 'SNAPSHOT_REASON_INITIAL'
+  | 1
+  | 'SNAPSHOT_REASON_REPORT_ACCEPTED'
+  | 2
+  | 'SNAPSHOT_REASON_REPORTS_EXPIRED'
+  | 3
+
+export type SnapshotReason__Output = typeof SnapshotReason[keyof typeof SnapshotReason]
