@@ -1,5 +1,20 @@
 {
   "name": "SilentRadar",
-  "decisions": ["Directorio editorial universitario", "Lista compacta con separadores", "Fondo cálido y verde profundo", "Newsreader y Public Sans", "Sin servicios de pago"],
-  "colors": { "background": "#F4F1E9", "surface": "#FFFEFA", "text": "#202D27", "brand": "#234D3C" }
+  "decisions": [
+    "Web SaaS premium con inicio, Qué somos y Cómo funciona",
+    "Vista previa con datos reales y directorio integrado",
+    "Tarjetas y lista intercambiables",
+    "Verde bosque, salvia y fondo mineral",
+    "Newsreader con cursiva auténtica y Public Sans",
+    "Animaciones CSS y revelado por scroll con movimiento reducido",
+    "Sin servicios de pago"
+  ],
+  "colors": {
+    "background": "#F8FAF6",
+    "surface": "#FFFFFF",
+    "text": "#19362B",
+    "brand": "#284E36",
+    "accent": "#D3E9B7",
+    "dark": "#172D23"
+  }
 }
