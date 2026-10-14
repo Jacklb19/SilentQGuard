@@ -1,0 +1,42 @@
+services:
+  acoustic:
+    build:
+      context: .
+      dockerfile: deploy/acoustic.Dockerfile
+    environment:
+      ACOUSTIC_HOST: 0.0.0.0
+      REPORT_WINDOW_SECONDS: '1800'
+      SWEEP_INTERVAL_SECONDS: '10'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('node:net').connect(50051,'127.0.0.1').on('connect',function(){this.end();process.exit(0)}).on('error',()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+  gateway:
+    build:
+      context: .
+      dockerfile: deploy/gateway.Dockerfile
+    ports:
+      - '3000:3000'
+    environment:
+      GRPC_TARGET: acoustic:50051
+    depends_on:
+      acoustic:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3

@@ -1,12 +1,12 @@
 # SilentRadar · Plan técnico y de diseño
 
-Fecha: 13 de octubre de 2026. Alcance: MVP académico con gRPC y publicación en nube. Este documento define el trabajo; no representa una aplicación implementada ni desplegada.
+Fecha: 13 de octubre de 2026. Alcance: MVP académico con gRPC y publicación gratuita. Actualización acordada: ejecución local con Node.js y publicación completa en Render Free; Vercel es opcional para el frontend. Este documento especifica el trabajo; README y pruebas registran el estado implementado.
 
 ## 1. Evaluación y decisiones
 
 La propuesta es viable como demostración académica: navegador → gateway HTTP → servicio gRPC, con SSE hacia el navegador. La separación permite demostrar RPC unary y server streaming entre procesos reales. Para un producto de solo cuatro espacios, dos backends se justifican por el requisito académico; no por una necesidad de escala.
 
-La carpeta actual está vacía y no contiene un repositorio Git. No hay implementación que auditar. Se toma el texto entregado como propuesta inicial y se conserva SilentRadar como nombre del producto; SilentQGuard es por ahora el nombre de la carpeta. El PDF del profesor mencionado en el texto no fue entregado: no se presupone que sus requisitos estén verificados.
+La evaluación inicial se realizó sobre una carpeta vacía. El repositorio creado posteriormente por el usuario es `Jacklb19/SilentQGuard`; SilentRadar es el nombre del producto. El PDF del profesor mencionado en el texto no fue entregado: no se presupone que sus requisitos estén verificados. Prioridades confirmadas por el usuario: app funcional del caso de estudio, gRPC real, herramientas gratuitas y autoría exclusiva del usuario en Git.
 
 | Hallazgo en la propuesta | Resolución obligatoria |
 | --- | --- |
@@ -18,7 +18,7 @@ La carpeta actual está vacía y no contiene un repositorio Git. No hay implemen
 | No se precisa qué ocurre al vencer un reporte | Depuración antes de cada lectura/escritura y cada 10 segundos. |
 | `success` y `message` mezclan resultados con errores | Respuesta de éxito tipada; errores gRPC convertidos a códigos HTTP. |
 | Reintentar POST puede registrar dos reportes | `requestId` obligatorio e idempotencia temporal dentro del proceso. |
-| Una instancia en nube se presenta como suficiente | Configuración de demo; memoria sigue siendo frágil ante reinicios, revisiones y réplicas transitorias. |
+| Una instancia en nube se presenta como suficiente | Demo con memoria temporal; los reinicios y la suspensión del hosting gratuito borran reportes. |
 | Cuatro horas incluyen demasiada incertidumbre de infraestructura | Preparación previa y primer despliegue pequeño al inicio; puertas de avance y contingencia. |
 
 **Decisión:** conservar React, gateway, gRPC y SSE; usar TypeScript en todo el proyecto; servir el frontend desde el gateway; mantener memoria exclusivamente para el MVP académico. El plan de cuatro horas es un objetivo condicionado a herramientas y acceso cloud preparados, no una garantía.
@@ -61,8 +61,8 @@ Todos arrancan **sin reportes**. Los datos ilustrativos de una maqueta nunca se 
 | Estado UI | Hook propio + reducer React | Cuatro espacios; sin Redux ni cache de consultas adicional. |
 | Workspace | npm workspaces, `tsx` en desarrollo, `tsc` para backends | Node/npm disponible; scripts sencillos. |
 | Pruebas | Vitest; Supertest para gateway | Reloj controlado y pruebas de integración reales. |
-| Entrega | Docker multi-stage + Compose; Google Cloud Run | Dos contenedores y demostración reproducible. |
-| Auth cloud | `google-auth-library` + identidad de servicio | Token IAM del gateway al servicio acústico. |
+| Entrega | Node.js, Docker opcional + Compose; Render Free | Ejecución gratuita y dos procesos reales, con una sola URL. |
+| Aislamiento RPC | Loopback en Render; red privada de Compose | El servicio gRPC no se publica en internet. |
 
 Fijar versiones exactas en el lockfile al crear el proyecto y ejecutar `npm ci` en CI/Docker. No tomar `latest` como configuración reproducible. Node 24 figura en la línea LTS del [calendario oficial](https://github.com/nodejs/Release). Vite y Tailwind se integrarán siguiendo sus [guías de instalación](https://vite.dev/guide/) y [plugin oficial](https://tailwindcss.com/docs/installation/using-vite).
 
@@ -79,7 +79,7 @@ flowchart LR
     A --> M["Memoria · catálogo y reportes"]
 ```
 
-En nube hay **dos servicios**: `gateway`, público, incluye archivos del frontend; `acoustic-service`, exige IAM. En local: Vite 5173, gateway 3000, acoustic 50051. Vite redirige `/api` al gateway; el navegador usa rutas relativas. En nube cada servidor escucha `0.0.0.0:$PORT`.
+Hay **dos procesos backend independientes**: `gateway`, incluye archivos del frontend compilado; `acoustic-service`, habla gRPC. En Render Free comparten un alojamiento y se comunican por `127.0.0.1:50051`; únicamente HTTP del gateway está expuesto y escucha `0.0.0.0:$PORT`. En Compose se ejecutan en dos contenedores. En desarrollo: Vite 5173, gateway 3000, acoustic 50051. Vite redirige `/api` al gateway; el navegador usa rutas relativas.
 
 **Frontend:** presentar datos, filtrar, ordenar, validar la interacción y controlar el estado de conexión. Nunca calcula el promedio oficial ni determina vencimientos.
 
@@ -132,7 +132,7 @@ Gateway: máximo 10 intentos de reporte/minuto/IP, 5 conexiones SSE/IP y 100 SSE
 
 ## 6. Contrato gRPC
 
-La especificación completa está en [contracts/acoustic.proto](contracts/acoustic.proto), paquete `silentradar.acoustic.v1`.
+La especificación completa está en [../packages/contracts/acoustic.proto](../packages/contracts/acoustic.proto), paquete `silentradar.acoustic.v1`.
 
 | RPC | Entrada | Salida | Semántica |
 | --- | --- | --- | --- |
@@ -197,7 +197,7 @@ El ejemplo recorta la lista; la respuesta real incluye los cuatro espacios. JSON
 | UNAUTHENTICATED / PERMISSION_DENIED entre servicios | 502 | UPSTREAM_AUTH_ERROR |
 | INTERNAL o desconocido | 500 | INTERNAL_ERROR |
 
-El 502 de IAM es un problema del gateway, no una solicitud de login al estudiante. Los [status gRPC](https://grpc.io/docs/guides/status-codes/) conservan su semántica dentro del backend. Deadline unary: 5 segundos; readiness: 2 segundos.
+El 502 de autenticación upstream queda reservado para una evolución que requiera autenticación entre hosts; en la versión gratuita el canal es privado por loopback/red Docker. Los [status gRPC](https://grpc.io/docs/guides/status-codes/) conservan su semántica dentro del backend. Deadline unary: 5 segundos; readiness: 2 segundos.
 
 Formato uniforme, también para validación HTTP:
 
@@ -226,7 +226,7 @@ Encabezados: `Content-Type: text/event-stream`, `Cache-Control: no-cache, no-tra
 
 Nuevo navegador: si cache está sincronizada, recibir snapshot actual como `INITIAL`; si no, esperar la reconexión del upstream con estado `syncing`. Al caer gRPC, invalidar cache para conexiones nuevas y avisar `reconnecting` a clientes existentes. Conservar datos anteriores en pantalla con aviso de desconexión.
 
-Reconectar gRPC con backoff 1, 2, 4, 8, hasta 30 s y jitter; reiniciar backoff después del snapshot inicial. Reintentar fallos transitorios y el fin normal por rotación; IAM inválido se registra como error de configuración y se reintenta lentamente, sin bucle intenso. Cancelar el stream antiguo antes de reemplazarlo y retirar listeners/timers al cerrar.
+Reconectar gRPC con backoff 1, 2, 4, 8, hasta 30 s y jitter; reiniciar backoff después del snapshot inicial. Reintentar fallos transitorios y el fin normal por rotación. El canal gratuito por loopback no requiere IAM. Cancelar el stream antiguo antes de reemplazarlo y retirar listeners/timers al cerrar.
 
 EventSource reconecta SSE; cada reconexión obtiene un snapshot nuevo. `Last-Event-ID` no solicita replay: se documenta que siempre se resincroniza con estado actual. No se garantiza recibir cada transición intermedia. Limpiar timers y buffers al cerrar clientes; una caída de gRPC no debe detener las reconexiones porque existan cero navegadores conectados.
 
@@ -318,32 +318,21 @@ La calidad visual se juzga por jerarquía, espaciado, legibilidad y comportamien
 
 ## 10. Despliegue y configuración
 
-Cloud Run soporta gRPC unary y streaming; el stream requiere HTTP/2 y escuchar `PORT`, según la [documentación oficial](https://docs.cloud.google.com/run/docs/triggering/grpc). Cliente gateway usa TLS al hostname acústico puerto 443; dentro del contenedor acústico el servidor recibe h2c detrás de la terminación TLS de Cloud Run. En Compose, canal sin TLS dentro de la red privada, sin publicar puerto acústico salvo perfil de depuración.
+Decisión aprobada: **toda la app en Render Free**, con opción de frontend separado en Vercel Hobby. Ambos backends son procesos distintos, supervisados por `scripts/run.mjs`; gRPC circula en loopback y solo el gateway está expuesto por HTTPS. No se requiere Google Cloud, facturación ni tarjetas para desarrollar.
 
-`acoustic-service` exige identidad IAM: cuenta de servicio del gateway con `roles/run.invoker` solo sobre ese servicio; token de identidad con audiencia URL del receptor en metadata `authorization`. Usar identidad asignada y ADC, sin claves JSON en repositorio. No confundir «sin acceso anónimo» con restricción de ingress: mantener ingress compatible con llamadas entre estos servicios hasta configurar red privada explícita. Referencia: [autenticación entre servicios](https://docs.cloud.google.com/run/docs/authenticating/service-to-service).
+`render.yaml` define Web Service Node gratuito, build `npm ci --include=dev && npm run build`, inicio `npm start`, readiness `/health/ready` y Node 24. Gateway escucha `0.0.0.0:$PORT`; Acoustic escucha `127.0.0.1:50051`. No usar `PORT` del hosting para ambos procesos. Render admite [servicios Node con puerto HTTP público](https://render.com/docs/web-services).
 
-Configuración inicial para **demo**: misma región; una revisión activa sin split de tráfico; mínimo 1 y máximo 1 a nivel servicio para acoustic durante sustentación; máximo 1 gateway para simplificar límites en memoria. Esto reduce divergencia, pero Cloud Run advierte que el [máximo puede excederse transitoriamente](https://docs.cloud.google.com/run/docs/configuring/max-instances). No proporciona consistencia distribuida.
+Variables: gateway `PORT`/`GATEWAY_PORT`, `GRPC_TARGET`, `APP_ORIGIN`, `TRUST_PROXY_HOPS`; acústico `ACOUSTIC_PORT`, `ACOUSTIC_HOST`, `REPORT_WINDOW_SECONDS=1800`, `SWEEP_INTERVAL_SECONDS=10`. En Render se configura un salto de proxy; en local ninguno. No confiar en headers de proxy fuera del entorno configurado. Por defecto gRPC solo escucha loopback; Compose habilita `0.0.0.0` exclusivamente dentro de su red privada.
 
-Timeout de ambos servicios: 3600 s, con rotación controlada del stream gRPC y SSE aproximadamente a los 50 minutos y resincronización. Las peticiones Cloud Run tienen [timeout máximo de 60 minutos](https://docs.cloud.google.com/run/docs/configuring/request-timeout); heartbeat no elimina ese límite.
+Vercel opcional: build de React con `vercel.json`; `VITE_API_URL` apunta a Render; gateway acepta únicamente el origen exacto configurado en `APP_ORIGIN`. SSE conecta directamente a Render, sin Function intermediaria. [Vercel Hobby](https://vercel.com/docs/plans/hobby) se usa para el proyecto académico personal, no comercial.
 
-Acoustic con CPU disponible fuera de requests mediante facturación por instancia y mínimo 1 mientras se demuestra, para que el barrido no dependa de peticiones. Esa [modalidad permite trabajo de fondo](https://docs.cloud.google.com/run/docs/configuring/billing-settings) y tiene costo: retirar mínimo al finalizar y documentar límites. Las lecturas siempre depuran, aun si el timer se retrasó. El proceso puede reiniciarse y perder toda la memoria.
+Los [límites de Render Free](https://render.com/docs/free) incluyen suspensión por inactividad, cuotas y posibles reinicios. Un arranque frío puede tardar alrededor de un minuto. Para mantener costo cero, elegir Free y no añadir un método de pago: si las cuotas se agotan, el proveedor puede suspender servicios o builds. No usar pings artificiales para forzar disponibilidad permanente. La memoria se pierde al suspender, reiniciar o desplegar. Las lecturas siempre depuran reportes, aunque el timer se haya detenido.
 
-Variables validadas al arrancar:
+Docker es opcional: dos imágenes multi-stage, usuario no root, red privada para gRPC, único puerto público HTTP, health TCP acoustic y HTTP gateway. En Node sin Docker, basta `npm run dev` o `npm run build` seguido de `npm start`. Streams rotan a los 50 minutos, se reconectan y resincronizan.
 
-| Servicio | Variables |
-| --- | --- |
-| Gateway | `PORT`, `NODE_ENV`, `GRPC_TARGET`, `GRPC_TLS`, `GRPC_AUDIENCE`, `APP_ORIGIN` |
-| Acoustic | `PORT`, `NODE_ENV`, `REPORT_WINDOW_SECONDS=1800`, `SWEEP_INTERVAL_SECONDS=10` |
+Logs JSON con identificador HTTP, método RPC, revisión y errores; readiness ejecuta una llamada unary real. Nunca registrar credenciales. La publicación exige una sesión del usuario en Render; los archivos de configuración no prueban que esté desplegado.
 
-En cloud: `GRPC_TARGET=hostname:443`, TLS habilitado, audiencia `https://hostname`. En local: `acoustic-service:50051`, TLS deshabilitado, sin audiencia. Permitir ventana corta solo en test/demo local claramente identificada; nube normal usa 30 minutos.
-
-Dockerfiles separados, build desde raíz para incluir contratos. Gateway multi-stage compila web y backend, copia web/dist al runtime; imagen acoustic solo backend/contrato. Usuario no root, cierre ordenado SIGTERM, health TCP para contenedor gRPC y probes HTTP gateway. Recursos iniciales a medir: 1 CPU, 512 MiB por servicio; no asumir suficiencia sin ejecución.
-
-Logs JSON con traceId HTTP, método RPC, duración, revisión y errores. Para evidenciar gRPC: registrar `SubmitReport` y recepción de snapshot de `WatchSpaces`, sin token ni contenido sensible. `/health/live` no afirma disponibilidad del dominio; readiness prueba una llamada real.
-
-**Límite honesto:** Cloud Run + memoria puede perder reportes y no garantiza que dos llamadas lleguen al mismo estado si hay más de una instancia. Para demo breve se acepta y se explica. Si persistencia o consistencia son criterios obligatorios del curso, hay que cambiar el alcance antes de construir.
-
-**Evolución posterior:** repositorio persistente PostgreSQL con tablas `spaces`, `noise_reports` y deduplicación; FK de reportes a espacios, `CHECK(level BETWEEN 1 AND 5)`, índice `(space_id, received_at)`, `request_id UNIQUE`, timestamps UTC, transacción y outbox. Agregar distribución de eventos compartida y un cursor persistente; varios procesos no deben mantener snapshots independientes. No sustituir memoria por SQLite local en Cloud Run esperando persistencia. Esta fase requiere nuevo presupuesto.
+**Evolución posterior:** PostgreSQL con FK de reportes a espacios, `CHECK(level BETWEEN 1 AND 5)`, índice `(space_id, received_at)`, `request_id UNIQUE`, timestamps UTC y outbox para eventos compartidos. No guardar SQLite en el disco efímero de un hosting esperando persistencia. Esta fase queda fuera del MVP gratuito acordado.
 
 ## 11. Organización del proyecto a crear
 
@@ -366,21 +355,21 @@ SilentQGuard/
   .env.example
 ```
 
-Los archivos en `docs/contracts` son la especificación revisable entregada en esta fase. Al implementar, trasladar el proto canónico a `packages/contracts` y actualizar referencias; no mantener dos copias editables. El JSON Schema conserva función de especificación: derivar validadores Zod equivalentes o generar el esquema a partir de ellos con checks de equivalencia, evitando mantener contratos divergentes.
+El proto canónico se trasladó a `packages/contracts`; no hay una segunda copia editable. JSON Schema sigue en `docs/contracts`; los validadores Zod y las pruebas contrastan ejemplos válidos e invariantes inválidas. Las restricciones relacionales del catálogo y el máximo uint64 se comprueban adicionalmente en código.
 
 Componentes UI: `AppHeader`, `ConnectionIndicator`, `SpaceToolbar`, `SpaceList`, `SpaceRow`, `NoiseIndicator`, `StatusBadge`, `ReportDialog`, `FeedbackToast`, `EmptyState`. Hooks: `useSpacesStream`, `useReportSubmission`, `useRelativeTime`. Reducer único para snapshots y conexión; filtro y modal son estado de UI independiente.
 
 ## 12. Ejecución objetivo: 240 minutos
 
-Preparación previa: acceso cloud con facturación, permisos y cuotas, gcloud autenticado, registry disponible, Node/npm y Docker operativos. Si falta esa preparación, asignar tiempo adicional; no contar configuración de cuentas como una tarea de cinco minutos.
+Preparación previa: Node/npm y cuentas gratuitas en Render/Vercel si se publica; Docker es opcional. No se requiere facturación, gcloud ni registry. Los bloqueos de login se resuelven con la sesión del usuario, sin compartir contraseñas en el chat.
 
 | Minutos | Trabajo | Puerta de salida |
 | --- | --- | --- |
-| 0–25 | Workspace, strict TS, tipos proto, shells de dos servicios, primer contenedor gRPC y despliegue pequeño | Gateway invoca una llamada gRPC cloud con IAM/HTTP2; bloqueos descubiertos temprano. |
+| 0–25 | Workspace, strict TS, tipos proto, shells de dos procesos y configuración de Render Free | Gateway invoca gRPC local; requisitos de publicación comprobados temprano. |
 | 25–75 | Catálogo, reloj, repositorio, reglas, deduplicación, cuatro RPC, snapshots y barrido | Pruebas de umbrales/expiración pasan; stream inicial real. |
 | 75–115 | Rutas HTTP, mappers, errores, SSE compartido, reconexión y cleanup | Dos clientes reciben mismo estado tras reportar y reconectar. |
 | 115–170 | UI con tokens, lista, controles, modal, estados y responsive | Flujo usable por teclado y a 390 px; no hay errores de consola. |
-| 170–205 | Build final, imágenes, IAM, Cloud Run, static frontend | URL pública, backends separados, stream funcionando. |
+| 170–205 | Build final, Render Free y frontend estático servido por gateway | URL pública, procesos separados, stream funcionando. |
 | 205–240 | Pruebas de aceptación, revisión visual y README/sustentación | Evidencias y demo de cinco minutos lista. |
 
 Si nube falla al principio, continuar lógica/UI en Compose y registrar el bloqueo concreto; despliegue sigue pendiente y no se declara completado. Si se consume el margen, recortar búsqueda y orden avanzado antes de contratos, expiración, streaming, accesibilidad o entrega requerida. No introducir ninguna función nueva mientras gRPC y SSE no funcionen extremo a extremo.
@@ -403,7 +392,7 @@ Integración: arrancar servicio gRPC real en puerto efímero y gateway real; pro
 | Recuperación | Desconectar/restaurar servicio; muestra reconexión y recupera snapshot completo. |
 | Orden y filtro | NO_DATA al final del orden por ruido; lista vacía de filtro diferenciada de fallo. |
 | gRPC real | Trazas de unary y streaming entre procesos distintos; sin atajo HTTP acoustic. |
-| Nube | URL pública del gateway; acoustic sin acceso anónimo; IAM y TLS probados. |
+| Publicación gratuita | URL pública del gateway, gRPC interno sin puerto público; plan Free y HTTPS del proveedor. |
 | UI | Revisar 1440, 768, 390 y 360 px; teclado, foco, contraste, texto largo y movimiento reducido. |
 | Build | Typecheck, tests pertinentes y builds pasan; contenedores arrancan en Compose. |
 | Documentación | README con comandos, diagrama, proto, endpoints, limitaciones y script de demo. |
